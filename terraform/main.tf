@@ -77,3 +77,44 @@ resource "azurerm_windows_virtual_machine" "vm" {
 
   tags = var.tags
 }
+
+resource "azurerm_network_interface" "template_nic" {
+  name                = "nic-template-vm"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnet.id
+    private_ip_address_allocation = "Dynamic"
+  }
+
+  tags = var.tags
+}
+
+resource "azurerm_windows_virtual_machine" "template_vm" {
+  name                  = "vm-template"
+  computer_name         = "vmtemplate"
+  resource_group_name   = azurerm_resource_group.rg.name
+  location              = azurerm_resource_group.rg.location
+  size                  = "Standard_B2s"
+  admin_username        = "azureuser"
+  admin_password        = "MySecurePassword123!"
+  network_interface_ids = [azurerm_network_interface.template_nic.id]
+  provision_vm_agent    = true
+
+  os_disk {
+    name                 = "osdisk-template"
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "MicrosoftWindowsDesktop"
+    offer     = "windows-11"
+    sku       = "win11-22h2-pro"
+    version   = "latest"
+  }
+
+  tags = var.tags
+}
