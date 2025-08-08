@@ -32,7 +32,8 @@ resource "azurerm_public_ip" "public_ip" {
 }
 
 resource "azurerm_network_interface" "nic" {
-  name                = "nic-win-notepadpp"
+  count               = var.number_of_vms
+  name                = "nic-win-notepadpp-${count.index}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -46,18 +47,19 @@ resource "azurerm_network_interface" "nic" {
   tags = var.tags
 }
 
-resource "azurerm_windows_virtual_machine" "vm" {
-  name                  = "vm-win-notepadp"
+# Imagine personalizată din VM (template)
+resource "azurerm_windows_virtual_machine" "template_vm" {
+  name                  = "template-vm-win-notepadpp"
   resource_group_name   = azurerm_resource_group.rg.name
   location              = azurerm_resource_group.rg.location
   size                  = "Standard_B2s"
   admin_username        = "azureuser"
   admin_password        = "MySecurePassword123!"
-  network_interface_ids = [azurerm_network_interface.nic.id]
+  network_interface_ids = [azurerm_network_interface.nic[0].id]
   provision_vm_agent    = true
 
   os_disk {
-    name                 = "osdisk-win-notepadpp"
+    name                 = "osdisk-template-notepadpp"
     caching              = "ReadWrite"
     storage_account_type = "Standard_LRS"
   }
@@ -70,6 +72,38 @@ resource "azurerm_windows_virtual_machine" "vm" {
   }
 
   custom_data = base64encode(file("${path.module}/../installers/npp.ps1"))
+
+  tags = var.tags
+}
+
+# Imagine personalizată (creată după ce template-ul e gata și generalizat)
+resource "azurerm_image" "custom_image" {
+  name                    = "custom-win-image"
+  location                = azurerm_resource_group.rg.location
+  resource_group_name     = azurerm_resource_group.rg.name
+  source_virtual_machine_id = azurerm_windows_virtual_machine.template_vm.id
+  depends_on              = [azurerm_windows_virtual_machine.template_vm]
+}
+
+# VM-uri create din imaginea salvată
+resource "azurerm_windows_virtual_machine" "vm" {
+  count                  = var.number_of_vms
+  name                   = "vm-win-notepadpp-${count.index}"
+  resource_group_name    = azurerm_resource_group.rg.name
+  location               = azurerm_resource_group.rg.location
+  size                   = "Standard_B2s"
+  admin_username         = "azureuser"
+  admin_password         = "MySecurePassword123!"
+  network_interface_ids  = [azurerm_network_interface.nic[count.index].id]
+  provision_vm_agent     = true
+
+  os_disk {
+    name                 = "osdisk-from-img-${count.index}"
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_id        = azurerm_image.custom_image.id
 
   tags = var.tags
 }
