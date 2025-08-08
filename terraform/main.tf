@@ -4,7 +4,7 @@ provider "azurerm" {
 
 resource "azurerm_resource_group" "rg" {
   name     = "rg-vm-win-notepadpp"
-  location = "East Europe"
+  location = "westeurope"
   tags     = var.tags
 }
 
