@@ -54,6 +54,18 @@ jobs:
           ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
         run: terraform init
 
+      - name: 📥 Import Resource Group if exists
+        run: |
+          RG_EXISTS=$(az group show --name rg-vm-apps --query name -o tsv || echo "")
+          if [ "$RG_EXISTS" = "rg-vm-apps" ]; then
+            echo "✅ RG exists in Azure, importing into Terraform state..."
+            terraform import azurerm_resource_group.rg "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-apps"
+          else
+            echo "❌ RG does not exist yet. Terraform will create it."
+          fi
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
       - name: Apply only template_vm
         env:
           ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
