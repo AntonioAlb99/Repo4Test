@@ -54,19 +54,10 @@ jobs:
           ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
         run: terraform init
 
-      - name: Import RG if Exists
-        env:
-          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
+      - name: Ensure Resource Group Exists
         run: |
-          if [ -f terraform.tfstate ]; then
-            terraform state list | grep azurerm_resource_group.rg || \
-            az group create --name rg-vm-apps --location westeurope
-          else
-            terraform import azurerm_resource_group.rg "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-apps"
-          fi
+          az group show --name rg-vm-apps --output none || \
+          az group create --name rg-vm-apps --location westeurope
 
       - name: Apply only template_vm
         env:
