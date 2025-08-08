@@ -63,7 +63,7 @@ jobs:
         run: |
           if [ -f terraform.tfstate ]; then
             terraform state list | grep azurerm_resource_group.rg || \
-            terraform import azurerm_resource_group.rg "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-apps"
+            az group create --name rg-vm-apps --location westeurope
           else
             terraform import azurerm_resource_group.rg "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-apps"
           fi
