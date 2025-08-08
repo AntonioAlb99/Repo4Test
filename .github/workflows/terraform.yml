@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [ main ]
 
-defaults:
-  run:
-    working-directory: ./terraform
-
 jobs:
 
   check-image:
@@ -121,7 +117,7 @@ jobs:
     needs: [check-image, generalize-template, import-image-if-exists]
     defaults:
       run:
-        working-directory: terraform
+        working-directory: ./terraform
     steps:
       - uses: actions/checkout@v4
 
