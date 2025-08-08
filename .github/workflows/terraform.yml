@@ -136,6 +136,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Import RG if exists
+        run: |
+          RG_NAME="rg-vm-apps"
+          RG_ID=$(az group show --name $RG_NAME --query id -o tsv || echo "")
+          if [ ! -z "$RG_ID" ]; then
+            if ! terraform state list | grep -q "azurerm_resource_group.rg"; then
+              terraform import azurerm_resource_group.rg $RG_ID
+            fi
+          fi
+
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.4
