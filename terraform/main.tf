@@ -1,3 +1,7 @@
+provider "azurerm" {
+  features {}
+}
+
 # ✅ Resource Groups (will be created only if missing)
 resource "azurerm_resource_group" "rg" {
   name     = "rg-vm-apps"
