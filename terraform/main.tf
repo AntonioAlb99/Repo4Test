@@ -2,112 +2,129 @@ provider "azurerm" {
   features {}
 }
 
-# ✅ Resource Group pentru aplicații (VM-urile finale)
-resource "azurerm_resource_group" "rg_apps" {
+variable "tags" {
+  type = map(string)
+  default = {
+    environment = "dev"
+    project     = "custom-image"
+  }
+}
+
+variable "number_of_vms" {
+  type    = number
+  default = 1
+}
+
+# ✅ Resource Group
+resource "azurerm_resource_group" "rg" {
   name     = "rg-vm-apps"
   location = "westeurope"
   tags     = var.tags
 }
 
-# ✅ Resource Group pentru imagini
-resource "azurerm_resource_group" "rg_images" {
-  name     = "rg-vm-images"
-  location = "westeurope"
-  tags     = var.tags
-}
-
-# ✅ VNET + Subnet (în RG apps)
+# ✅ Virtual Network
 resource "azurerm_virtual_network" "vnet" {
   name                = "vnet-infra"
   address_space       = ["10.0.0.0/16"]
-  location            = azurerm_resource_group.rg_apps.location
-  resource_group_name = azurerm_resource_group.rg_apps.name
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
   tags                = var.tags
 }
 
+# ✅ Subnet
 resource "azurerm_subnet" "subnet" {
   name                 = "subnet-infra"
-  resource_group_name  = azurerm_resource_group.rg_apps.name
+  resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.1.0/24"]
 }
 
+# ✅ Public IP pentru template
+resource "azurerm_public_ip" "pip_template" {
+  name                = "pip-template"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Static"
+  tags                = var.tags
+}
+
 # ✅ NIC pentru template
-resource "azurerm_network_interface" "template_nic" {
-  name                = "nic-template-vm"
-  location            = azurerm_resource_group.rg_apps.location
-  resource_group_name = azurerm_resource_group.rg_apps.name
+resource "azurerm_network_interface" "nic_template" {
+  name                = "nic-template"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
 
   ip_configuration {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.subnet.id
     private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.pip_template.id
   }
 
   tags = var.tags
 }
 
-# ✅ Template VM (va fi folosit pentru imagine)
-resource "azurerm_windows_virtual_machine" "template_vm" {
+# ✅ VM Template (care va fi folosit pentru imagine)
+resource "azurerm_windows_virtual_machine" "vm_template" {
   name                  = "vm-template"
-  computer_name         = "vmtemplate"
-  resource_group_name   = azurerm_resource_group.rg_apps.name
-  location              = azurerm_resource_group.rg_apps.location
+  computer_name         = "template"
+  resource_group_name   = azurerm_resource_group.rg.name
+  location              = azurerm_resource_group.rg.location
   size                  = "Standard_B2s"
   admin_username        = "azureuser"
   admin_password        = "MySecurePassword123!"
-  network_interface_ids = [azurerm_network_interface.template_nic.id]
+  network_interface_ids = [azurerm_network_interface.nic_template.id]
   provision_vm_agent    = true
+  enable_automatic_updates = false
 
   os_disk {
-    name                 = "osdisk-template"
+    name                 = "template-osdisk"
     caching              = "ReadWrite"
     storage_account_type = "Standard_LRS"
   }
 
   source_image_reference {
-    publisher = "MicrosoftWindowsDesktop"
-    offer     = "windows-11"
-    sku       = "win11-22h2-pro"
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2019-Datacenter"
     version   = "latest"
   }
 
   tags = var.tags
 }
 
-# ✅ Creează imagine din template VM
+# ✅ Imagine din VM-ul template
 resource "azurerm_image" "custom_image" {
   name                = "custom-win-image"
-  location            = azurerm_resource_group.rg_images.location
-  resource_group_name = azurerm_resource_group.rg_images.name
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
 
   os_disk {
-    os_type  = "Windows"
-    os_state = "Generalized"
-    blob_uri = null
-    managed_disk_id = azurerm_windows_virtual_machine.template_vm.os_disk.id
-    storage_type = "Standard_LRS"
+    os_type         = "Windows"
+    os_state        = "Generalized"
+    managed_disk_id = azurerm_windows_virtual_machine.vm_template.storage_os_disk[0].managed_disk_id
+    storage_type    = "Standard_LRS"
   }
 
   tags = var.tags
 }
 
-# ✅ Public IPs pentru VM-urile finale
+# ✅ Public IPs pentru fiecare VM final
 resource "azurerm_public_ip" "public_ip" {
   count               = var.number_of_vms
   name                = "pip-vm-app-${count.index}"
-  location            = azurerm_resource_group.rg_apps.location
-  resource_group_name = azurerm_resource_group.rg_apps.name
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Static"
   tags                = var.tags
 }
 
-# ✅ NIC-uri pentru VM-uri finale
+# ✅ NIC-uri pentru fiecare VM final
 resource "azurerm_network_interface" "nic" {
   count               = var.number_of_vms
   name                = "nic-vm-app-${count.index}"
-  location            = azurerm_resource_group.rg_apps.location
-  resource_group_name = azurerm_resource_group.rg_apps.name
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
 
   ip_configuration {
     name                          = "internal"
@@ -119,18 +136,18 @@ resource "azurerm_network_interface" "nic" {
   tags = var.tags
 }
 
-# ✅ VM-uri finale create din imaginea personalizată
+# ✅ VM-uri create din imagine
 resource "azurerm_windows_virtual_machine" "vm" {
-  count                  = var.number_of_vms
-  name                   = "vm-app-${count.index}"
-  computer_name          = "vmapp${count.index}"
-  resource_group_name    = azurerm_resource_group.rg_apps.name
-  location               = azurerm_resource_group.rg_apps.location
-  size                   = "Standard_B2s"
-  admin_username         = "azureuser"
-  admin_password         = "MySecurePassword123!"
-  network_interface_ids  = [azurerm_network_interface.nic[count.index].id]
-  provision_vm_agent     = true
+  count                 = var.number_of_vms
+  name                  = "vm-app-${count.index}"
+  computer_name         = "vmapp${count.index}"
+  resource_group_name   = azurerm_resource_group.rg.name
+  location              = azurerm_resource_group.rg.location
+  size                  = "Standard_B2s"
+  admin_username        = "azureuser"
+  admin_password        = "MySecurePassword123!"
+  network_interface_ids = [azurerm_network_interface.nic[count.index].id]
+  provision_vm_agent    = true
 
   os_disk {
     name                 = "osdisk-from-img-${count.index}"
