@@ -4,7 +4,7 @@ provider "azurerm" {
 
 # ✅ Resource Group
 resource "azurerm_resource_group" "rg" {
-  name     = "rg-vm-apps"
+  name     = "rg-vm-images"
   location = "westeurope"
   tags     = var.tags
 }
