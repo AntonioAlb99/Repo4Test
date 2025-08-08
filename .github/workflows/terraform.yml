@@ -1,157 +1,66 @@
-name: 'Terraform CI/CD'
+name: Terraform CI/CD
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-
-  check-image:
-    name: 🔍 Check if Image Exists
+  terraform:
     runs-on: ubuntu-latest
-    outputs:
-      image_id: ${{ steps.check_image.outputs.image_id }}
+    defaults:
+      run:
+        working-directory: ./terraform
+
     steps:
-      - name: Azure CLI login
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.7.5
+
+      - name: Azure Login
         uses: azure/login@v1
         with:
-          creds: >
-            {
-              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
-              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
-              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
-              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
-            }
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Check image existence
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Check if image exists
         id: check_image
         run: |
-          IMAGE_ID=$(az image show --resource-group rg-vm-images --name custom-win-image --query id --output tsv || echo "")
-          echo "image_id=$IMAGE_ID" >> $GITHUB_OUTPUT
-
-  create-template-vm:
-    name:  Create Template VM
-    runs-on: ubuntu-latest
-    needs: check-image
-    if: needs.check-image.outputs.image_id == ''
-    defaults:
-      run:
-        working-directory: terraform
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.8.4
-
-      - name: Terraform Init
-        env:
-          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
-        run: terraform init
-
-      - name: Import RG if exists
-        run: |
-          RG_NAME="rg-vm-apps"
-          RG_ID=$(az group show --name $RG_NAME --query id -o tsv || echo "")
-          if [ ! -z "$RG_ID" ]; then
-            if ! terraform state list | grep -q "azurerm_resource_group.rg"; then
-              terraform import azurerm_resource_group.rg $RG_ID
-            fi
-          fi
-
-      - name: Apply only template_vm
-        env:
-          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
-        run: terraform apply -auto-approve -target=azurerm_windows_virtual_machine.template_vm -var-file="terraform.tfvars"
-
-  generalize-template:
-    name:  Deallocate & Generalize VM
-    runs-on: ubuntu-latest
-    needs: create-template-vm
-    if: needs.check-image.outputs.image_id == ''
-    defaults:
-      run:
-        working-directory: ./terraform
-    steps:
-      - uses: actions/checkout@v4
-      - name: Azure CLI login
-        uses: azure/login@v1
-        with:
-          creds: >
-            {
-              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
-              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
-              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
-              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
-            }
-
-      - name: Generalize
-        run: |
-          az vm deallocate --resource-group rg-vm-apps --name template-vm-app
-          az vm generalize --resource-group rg-vm-apps --name template-vm-app
-
-  import-image-if-exists:
-    name:  Import Custom Image if Exists
-    runs-on: ubuntu-latest
-    needs: generalize-template
-    steps:
-      - uses: actions/checkout@v4  
-
-      - name: Azure CLI login
-        uses: azure/login@v1
-        with:
-          creds: >
-            {
-              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
-              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
-              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
-              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
-            }
-
-      - name: Import image into state if exists
-        run: |
-          IMG_ID=$(az image show --resource-group rg-vm-images --name custom-win-image --query id -o tsv || echo "")
-          if [ "$IMG_ID" != "" ]; then
-            terraform init
-            terraform import azurerm_image.custom_image "$IMG_ID"
+          IMAGE_NAME="my-custom-image"
+          RESOURCE_GROUP="rg-vm-images"
+          az image show --name "$IMAGE_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null
+          if [ $? -eq 0 ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
           else
-            echo "Image does not exist. Terraform will create it."
+            echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-  apply-final:
-    name:  Apply Final Infra (VMs)
-    runs-on: ubuntu-latest
-    needs: [check-image, generalize-template, import-image-if-exists]
-    defaults:
-      run:
-        working-directory: ./terraform
-    steps:
-      - uses: actions/checkout@v4
+      - name: Create Template VM
+        if: steps.check_image.outputs.exists == 'false'
+        run: terraform apply -auto-approve -target=azurerm_windows_virtual_machine.template
 
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.8.4
+      - name: Deallocate & Generalize Template VM
+        if: steps.check_image.outputs.exists == 'false'
+        run: |
+          az vm deallocate --resource-group rg-vm-template --name vm-template
+          az vm generalize --resource-group rg-vm-template --name vm-template
 
-      - name: Terraform Init
-        env:
-          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
-        run: terraform init
+      - name: Import Custom Image if Exists
+        if: steps.check_image.outputs.exists == 'true'
+        run: terraform import azurerm_image.custom "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-images/providers/Microsoft.Compute/images/my-custom-image"
 
-      - name: Terraform Apply
-        env:
-          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
-        run: terraform apply -auto-approve -var-file="terraform.tfvars"
+      - name: Import RG if Exists
+        run: |
+          az group show --name rg-vm-apps --subscription ${{ secrets.ARM_SUBSCRIPTION_ID }} &> /dev/null
+          if [ $? -eq 0 ]; then
+            terraform import azurerm_resource_group.rg "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-apps"
+          fi
+
+      - name: Apply Final Infra (VMs)
+        run: terraform apply -auto-approve
