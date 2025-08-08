@@ -135,7 +135,7 @@ jobs:
         working-directory: ./terraform
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Azure CLI login
         uses: azure/login@v1
         with:
@@ -146,16 +146,6 @@ jobs:
               "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
               "tenantId": "${{ secrets.ARM_TENANT_ID }}"
             }
-
-      - name: Import RG if exists
-        run: |
-          RG_NAME="rg-vm-apps"
-          RG_ID=$(az group show --name $RG_NAME --query id -o tsv || echo "")
-          if [ ! -z "$RG_ID" ]; then
-            if ! terraform state list | grep -q "azurerm_resource_group.rg"; then
-              terraform import azurerm_resource_group.rg $RG_ID
-            fi
-          fi
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -168,6 +158,16 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
         run: terraform init
+
+      - name: Import RG if exists
+        run: |
+          RG_NAME="rg-vm-apps"
+          RG_ID=$(az group show --name $RG_NAME --query id -o tsv || echo "")
+          if [ ! -z "$RG_ID" ]; then
+            if ! terraform state list | grep -q "azurerm_resource_group.rg"; then
+              terraform import azurerm_resource_group.rg $RG_ID
+            fi
+          fi
 
       - name: Terraform Apply
         env:
