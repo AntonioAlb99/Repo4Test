@@ -67,6 +67,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: create-template-vm
     if: needs.check-image.outputs.image_id == ''
+    defaults:
+      run:
+        working-directory: ./terraform   # ✅ AICI!
     steps:
       - name: Azure CLI login
         uses: azure/login@v1
