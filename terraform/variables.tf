@@ -12,3 +12,10 @@ variable "tags" {
     departament = "IT"
   }
 }
+
+variable "create_image" {
+  description = "Set to true after generalizing VM"
+  type        = bool
+  default     = false
+}
+
