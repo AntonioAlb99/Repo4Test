@@ -56,9 +56,12 @@ jobs:
 
       - name: Import RG if Exists
         run: |
-          terraform state list | grep azurerm_resource_group.rg || \
-          terraform import azurerm_resource_group.rg "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-apps"
-
+          if [ -f terraform.tfstate ]; then
+            terraform state list | grep azurerm_resource_group.rg || \
+            terraform import azurerm_resource_group.rg "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-apps"
+          else
+            terraform import azurerm_resource_group.rg "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-apps"
+          fi
 
       - name: Apply only template_vm
         env:
