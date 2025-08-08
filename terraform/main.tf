@@ -3,13 +3,13 @@ provider "azurerm" {
 }
 
 resource "azurerm_resource_group" "rg" {
-  name     = "rg-vm-win-notepadpp"
+  name     = "rg-vm-apps"
   location = "westeurope"
   tags     = var.tags
 }
 
 resource "azurerm_virtual_network" "vnet" {
-  name                = "vnet-win-notepadpp"
+  name                = "vnet-infra"
   address_space       = ["10.0.0.0/16"]
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
@@ -17,7 +17,7 @@ resource "azurerm_virtual_network" "vnet" {
 }
 
 resource "azurerm_subnet" "subnet" {
-  name                 = "subnet-win"
+  name                 = "subnet-infra"
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.1.0/24"]
@@ -25,7 +25,7 @@ resource "azurerm_subnet" "subnet" {
 
 resource "azurerm_public_ip" "public_ip" {
   count               = var.number_of_vms
-  name                = "pip-win-notepadpp-${count.index}"
+  name                = "pip-vm-app-${count.index}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Static"
@@ -34,7 +34,7 @@ resource "azurerm_public_ip" "public_ip" {
 
 resource "azurerm_network_interface" "nic" {
   count               = var.number_of_vms
-  name                = "nic-win-notepadpp-${count.index}"
+  name                = "nic-vm-app-${count.index}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -42,15 +42,15 @@ resource "azurerm_network_interface" "nic" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.subnet.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id = azurerm_public_ip.public_ip[count.index].id
+    public_ip_address_id          = azurerm_public_ip.public_ip[count.index].id
   }
 
   tags = var.tags
 }
 
-# Imagine personalizată din VM (template)
 resource "azurerm_windows_virtual_machine" "template_vm" {
-  name                  = "template-vm-win-notepadpp"
+  name                  = "template-vm-app"
+  computer_name         = "tmplvm" # Sub 15 caractere
   resource_group_name   = azurerm_resource_group.rg.name
   location              = azurerm_resource_group.rg.location
   size                  = "Standard_B2s"
@@ -60,7 +60,7 @@ resource "azurerm_windows_virtual_machine" "template_vm" {
   provision_vm_agent    = true
 
   os_disk {
-    name                 = "osdisk-template-notepadpp"
+    name                 = "osdisk-template-app"
     caching              = "ReadWrite"
     storage_account_type = "Standard_LRS"
   }
@@ -72,24 +72,23 @@ resource "azurerm_windows_virtual_machine" "template_vm" {
     version   = "latest"
   }
 
-  custom_data = base64encode(file("${path.module}/../installers/npp.ps1"))
+  custom_data = base64encode(file("${path.module}/../installers/npp.ps1")) # poate fi redenumit
 
   tags = var.tags
 }
 
-# Imagine personalizată (creată după ce template-ul e gata și generalizat)
 resource "azurerm_image" "custom_image" {
-  name                    = "custom-win-image"
-  location                = azurerm_resource_group.rg.location
-  resource_group_name     = azurerm_resource_group.rg.name
-  source_virtual_machine_id = azurerm_windows_virtual_machine.template_vm.id
-  depends_on              = [azurerm_windows_virtual_machine.template_vm]
+  name                       = "custom-win-image"
+  location                   = azurerm_resource_group.rg.location
+  resource_group_name        = azurerm_resource_group.rg.name
+  source_virtual_machine_id  = azurerm_windows_virtual_machine.template_vm.id
+  depends_on                 = [azurerm_windows_virtual_machine.template_vm]
 }
 
-# VM-uri create din imaginea salvată
 resource "azurerm_windows_virtual_machine" "vm" {
   count                  = var.number_of_vms
-  name                   = "vm-win-notepadpp-${count.index}"
+  name                   = "vm-app-${count.index}"             # sub 15 caractere
+  computer_name          = "vmapp${count.index}"               # sub 15 caractere
   resource_group_name    = azurerm_resource_group.rg.name
   location               = azurerm_resource_group.rg.location
   size                   = "Standard_B2s"
