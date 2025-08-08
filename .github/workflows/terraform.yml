@@ -7,39 +7,13 @@ on:
     branches: [ main ]
 
 jobs:
-  terraform:
-    name: 'Terraform Full Pipeline'
+
+  check-image:
+    name: 🔍 Check if Image Exists
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: terraform
-
+    outputs:
+      image_id: ${{ steps.check_image.outputs.image_id }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.8.4
-
-      - name: Terraform Init
-        env:
-          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
-        run: terraform init
-
-      - name: Terraform Apply (1️⃣ Create only template VM)
-        env:
-          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
-        run: terraform apply -auto-approve -target=azurerm_windows_virtual_machine.template_vm -var-file="terraform.tfvars"
-
       - name: Azure CLI login
         uses: azure/login@v1
         with:
@@ -51,14 +25,88 @@ jobs:
               "tenantId": "${{ secrets.ARM_TENANT_ID }}"
             }
 
-      - name: 2️⃣ Deallocate and Generalize the template VM
+      - name: Check image existence
+        id: check_image
         run: |
-          echo "Deallocating VM..."
+          IMAGE_ID=$(az image show --resource-group rg-vm-images --name custom-win-image --query id --output tsv || echo "")
+          echo "image_id=$IMAGE_ID" >> $GITHUB_OUTPUT
+
+  create-template-vm:
+    name: 🛠 Create Template VM
+    runs-on: ubuntu-latest
+    needs: check-image
+    if: needs.check-image.outputs.image_id == ''
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.4
+
+      - name: Terraform Init
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
+        run: terraform init
+
+      - name: Apply only template_vm
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
+        run: terraform apply -auto-approve -target=azurerm_windows_virtual_machine.template_vm -var-file="terraform.tfvars"
+
+  generalize-template:
+    name: ⚙️ Deallocate & Generalize VM
+    runs-on: ubuntu-latest
+    needs: create-template-vm
+    if: needs.check-image.outputs.image_id == ''
+    steps:
+      - name: Azure CLI login
+        uses: azure/login@v1
+        with:
+          creds: >
+            {
+              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+            }
+
+      - name: Generalize
+        run: |
           az vm deallocate --resource-group rg-vm-apps --name template-vm-app
-          echo "Generalizing VM..."
           az vm generalize --resource-group rg-vm-apps --name template-vm-app
 
-      - name: Terraform Apply (3️⃣ Create image + rest of VMs)
+  apply-image-and-clones:
+    name: 🚀 Create Image & Clones
+    runs-on: ubuntu-latest
+    needs: [check-image, generalize-template]
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.4
+
+      - name: Terraform Init
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
+        run: terraform init
+
+      - name: Final Apply
         env:
           ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}

@@ -4,7 +4,7 @@ provider "azurerm" {
 
 # ✅ Resource Group
 resource "azurerm_resource_group" "rg" {
-  name     = "rg-vm-images"
+  name     = "rg-vm-apps"
   location = "westeurope"
   tags     = var.tags
 }
@@ -70,11 +70,17 @@ resource "azurerm_windows_virtual_machine" "template_vm" {
   tags        = var.tags
 }
 
+resource "azurerm_resource_group" "images" {
+  name     = "rg-vm-images"
+  location = "westeurope"
+}
+
 # ✅ Create Image from Template VM
 resource "azurerm_image" "custom_image" {
   name                      = "custom-win-image"
   location                  = azurerm_resource_group.rg.location
-  resource_group_name       = azurerm_resource_group.rg.name
+  resource_group_name       = azurerm_resource_group.images.name
+
   source_virtual_machine_id = azurerm_windows_virtual_machine.template_vm.id
 
   depends_on = [
