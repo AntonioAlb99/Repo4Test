@@ -63,9 +63,9 @@ resource "azurerm_windows_virtual_machine" "vm" {
   }
 
   source_image_reference {
-    publisher = "MicrosoftWindowsDesktop"
-    offer     = "windows-11"
-    sku       = "win11-22h2-pro"
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2022-Datacenter"
     version   = "latest"
   }
 
