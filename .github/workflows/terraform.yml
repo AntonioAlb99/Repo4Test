@@ -55,15 +55,20 @@ jobs:
 
       - name: Stop and Generalize VM Template
         run: |
+          echo "🔄 Deallocating template VM..."
           az vm deallocate --resource-group rg-vm-apps --name vm-template
+
+          echo "✅ Generalizing template VM..."
           az vm generalize --resource-group rg-vm-apps --name vm-template
 
       - name: Create Custom Image
         run: |
+          echo "📦 Creating custom image..."
           az image create \
             --resource-group rg-vm-images \
             --name custom-win-image \
-            --source vm-template \
+            --source "/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/rg-vm-apps/providers/Microsoft.Compute/virtualMachines/vm-template" \
+            --location westeurope \
             --os-type Windows
 
 
