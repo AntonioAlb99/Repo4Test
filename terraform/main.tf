@@ -1,16 +1,6 @@
-provider "azurerm" {
-  features {}
-}
-
-# ✅ Resource Groups (will be created only if missing)
+# ✅ Resource Group
 resource "azurerm_resource_group" "rg" {
   name     = "rg-vm-apps"
-  location = "westeurope"
-  tags     = var.tags
-}
-
-resource "azurerm_resource_group" "images" {
-  name     = "rg-vm-images"
   location = "westeurope"
   tags     = var.tags
 }
@@ -32,60 +22,7 @@ resource "azurerm_subnet" "subnet" {
   address_prefixes     = ["10.0.1.0/24"]
 }
 
-# ✅ NIC for Template VM
-resource "azurerm_network_interface" "nic_template" {
-  name                = "nic-template-vm"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = azurerm_subnet.subnet.id
-    private_ip_address_allocation = "Dynamic"
-  }
-
-  tags = var.tags
-}
-
-# ✅ Template VM (created only when image not found)
-resource "azurerm_windows_virtual_machine" "template_vm" {
-  name                  = "template-vm-app"
-  computer_name         = "tmplvm"
-  resource_group_name   = azurerm_resource_group.rg.name
-  location              = azurerm_resource_group.rg.location
-  size                  = "Standard_B2s"
-  admin_username        = "azureuser"
-  admin_password        = "MySecurePassword123!"
-  network_interface_ids = [azurerm_network_interface.nic_template.id]
-  provision_vm_agent    = true
-
-  os_disk {
-    name                 = "osdisk-template-app"
-    caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
-  }
-
-  source_image_reference {
-    publisher = "MicrosoftWindowsServer"
-    offer     = "WindowsServer"
-    sku       = "2022-Datacenter"
-    version   = "latest"
-  }
-
-  custom_data = base64encode(file("${path.module}/installers/npp.ps1"))
-  tags        = var.tags
-}
-
-# ✅ Create Image from Template VM (only once)
-resource "azurerm_image" "custom_image" {
-  name                      = "custom-win-image"
-  location                  = azurerm_resource_group.images.location
-  resource_group_name       = azurerm_resource_group.images.name
-  source_virtual_machine_id = azurerm_windows_virtual_machine.template_vm.id
-  depends_on                = [azurerm_windows_virtual_machine.template_vm]
-}
-
-# ✅ Public IPs for each Clone
+# ✅ Public IPs pentru fiecare VM
 resource "azurerm_public_ip" "public_ip" {
   count               = var.number_of_vms
   name                = "pip-vm-app-${count.index}"
@@ -95,7 +32,7 @@ resource "azurerm_public_ip" "public_ip" {
   tags                = var.tags
 }
 
-# ✅ NICs for Cloned VMs
+# ✅ NIC-uri pentru VM-uri
 resource "azurerm_network_interface" "nic" {
   count               = var.number_of_vms
   name                = "nic-vm-app-${count.index}"
@@ -112,7 +49,7 @@ resource "azurerm_network_interface" "nic" {
   tags = var.tags
 }
 
-# ✅ Final Cloned VMs from Image (only new will be added if increased)
+# ✅ VM-urile finale create din imagine
 resource "azurerm_windows_virtual_machine" "vm" {
   count                  = var.number_of_vms
   name                   = "vm-app-${count.index}"
@@ -131,6 +68,8 @@ resource "azurerm_windows_virtual_machine" "vm" {
     storage_account_type = "Standard_LRS"
   }
 
-  source_image_id = azurerm_image.custom_image.id
-  tags            = var.tags
+  # ⬇️ Imagine deja existentă
+  source_image_id = "/subscriptions/f9810baf-3da2-4f67-ba39-79ff3fd73156/resourceGroups/rg-vm-images/providers/Microsoft.Compute/images/custom-win-image"
+
+  tags = var.tags
 }
