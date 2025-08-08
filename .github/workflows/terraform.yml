@@ -102,11 +102,8 @@ jobs:
     name:  Import Custom Image if Exists
     runs-on: ubuntu-latest
     needs: generalize-template
-    defaults:
-      run:
-        working-directory: terraform
     steps:
-      - uses: actions/checkout@v4  # 🔧 FIX: repo must be checked out to access terraform folder
+      - uses: actions/checkout@v4  
 
       - name: Azure CLI login
         uses: azure/login@v1
