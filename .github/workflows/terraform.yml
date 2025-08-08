@@ -81,6 +81,7 @@ jobs:
       run:
         working-directory: ./terraform
     steps:
+      - uses: actions/checkout@v4
       - name: Azure CLI login
         uses: azure/login@v1
         with:
