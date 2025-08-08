@@ -78,10 +78,17 @@ resource "azurerm_windows_virtual_machine" "vm" {
   tags = var.tags
 }
 
+resource "azurerm_resource_group" "rg_images" {
+  name     = "rg-vm-images"
+  location = "westeurope"
+  tags     = var.tags
+}
+
+# ✅ NIC pentru template VM
 resource "azurerm_network_interface" "template_nic" {
   name                = "nic-template-vm"
   location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_name = "rg-vm-images"  # Alt RG special pentru imagini
 
   ip_configuration {
     name                          = "internal"
@@ -92,10 +99,11 @@ resource "azurerm_network_interface" "template_nic" {
   tags = var.tags
 }
 
+# ✅ Template VM pentru creare imagine
 resource "azurerm_windows_virtual_machine" "template_vm" {
   name                  = "vm-template"
   computer_name         = "vmtemplate"
-  resource_group_name   = azurerm_resource_group.rg.name
+  resource_group_name   = "rg-vm-images"
   location              = azurerm_resource_group.rg.location
   size                  = "Standard_B2s"
   admin_username        = "azureuser"
