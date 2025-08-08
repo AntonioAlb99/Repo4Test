@@ -48,9 +48,10 @@ resource "azurerm_network_interface" "nic" {
   tags = var.tags
 }
 
+# ✅ FAZA 1: Template VM
 resource "azurerm_windows_virtual_machine" "template_vm" {
   name                  = "template-vm-app"
-  computer_name         = "tmplvm" # Sub 15 caractere
+  computer_name         = "tmplvm"
   resource_group_name   = azurerm_resource_group.rg.name
   location              = azurerm_resource_group.rg.location
   size                  = "Standard_B2s"
@@ -72,23 +73,28 @@ resource "azurerm_windows_virtual_machine" "template_vm" {
     version   = "latest"
   }
 
-  custom_data = base64encode(file("${path.module}/../installers/npp.ps1")) # poate fi redenumit
+  custom_data = base64encode(file("${path.module}/installers/npp.ps1"))
 
   tags = var.tags
 }
 
+# ✅ FAZA 2: Create image from template
 resource "azurerm_image" "custom_image" {
-  name                       = "custom-win-image"
-  location                   = azurerm_resource_group.rg.location
-  resource_group_name        = azurerm_resource_group.rg.name
-  source_virtual_machine_id  = azurerm_windows_virtual_machine.template_vm.id
-  depends_on                 = [azurerm_windows_virtual_machine.template_vm]
+  name                      = "custom-win-image"
+  location                  = azurerm_resource_group.rg.location
+  resource_group_name       = azurerm_resource_group.rg.name
+  source_virtual_machine_id = azurerm_windows_virtual_machine.template_vm.id
+
+  depends_on = [
+    azurerm_windows_virtual_machine.template_vm
+  ]
 }
 
+# ✅ FAZA 2: Create VMs from image
 resource "azurerm_windows_virtual_machine" "vm" {
   count                  = var.number_of_vms
-  name                   = "vm-app-${count.index}"             # sub 15 caractere
-  computer_name          = "vmapp${count.index}"               # sub 15 caractere
+  name                   = "vm-app-${count.index}"
+  computer_name          = "vmapp${count.index}"
   resource_group_name    = azurerm_resource_group.rg.name
   location               = azurerm_resource_group.rg.location
   size                   = "Standard_B2s"
@@ -103,7 +109,6 @@ resource "azurerm_windows_virtual_machine" "vm" {
     storage_account_type = "Standard_LRS"
   }
 
-  source_image_id        = azurerm_image.custom_image.id
-
-  tags = var.tags
+  source_image_id = azurerm_image.custom_image.id
+  tags            = var.tags
 }

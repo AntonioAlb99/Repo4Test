@@ -1,8 +1,2 @@
-tags = {
-  proiect     = "NotepadPP"
-  mediu       = "Dev"
-  departament = "IT"
-}
-
-//Modifiy if want to create/delete vms
+//De aici setez nr de masini de creat
 number_of_vms = 1

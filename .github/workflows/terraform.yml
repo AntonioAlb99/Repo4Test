@@ -8,7 +8,7 @@ on:
 
 jobs:
   terraform:
-    name: 'Terraform Apply'
+    name: 'Terraform Full Pipeline'
     runs-on: ubuntu-latest
 
     defaults:
@@ -32,19 +32,33 @@ jobs:
           ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
         run: terraform init
 
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Terraform Plan
+      - name: Terraform Apply (1️⃣ Create only template VM)
         env:
           ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
-        run: terraform plan -var-file="terraform.tfvars"
+        run: terraform apply -auto-approve -target=azurerm_windows_virtual_machine.template_vm -var-file="terraform.tfvars"
 
-      - name: Terraform Apply
-        if: github.ref == 'refs/heads/main'
+      - name: Azure CLI login
+        uses: azure/login@v1
+        with:
+          creds: >
+            {
+              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+            }
+
+      - name: 2️⃣ Deallocate and Generalize the template VM
+        run: |
+          echo "Deallocating VM..."
+          az vm deallocate --resource-group rg-vm-apps --name template-vm-app
+          echo "Generalizing VM..."
+          az vm generalize --resource-group rg-vm-apps --name template-vm-app
+
+      - name: Terraform Apply (3️⃣ Create image + rest of VMs)
         env:
           ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
