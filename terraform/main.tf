@@ -1,10 +1,12 @@
-provider "azurerm" {
-  features {}
-}
-
-# ✅ Resource Group
+# ✅ Resource Groups (will be created only if missing)
 resource "azurerm_resource_group" "rg" {
   name     = "rg-vm-apps"
+  location = "westeurope"
+  tags     = var.tags
+}
+
+resource "azurerm_resource_group" "images" {
+  name     = "rg-vm-images"
   location = "westeurope"
   tags     = var.tags
 }
@@ -41,7 +43,7 @@ resource "azurerm_network_interface" "nic_template" {
   tags = var.tags
 }
 
-# ✅ Template VM
+# ✅ Template VM (created only when image not found)
 resource "azurerm_windows_virtual_machine" "template_vm" {
   name                  = "template-vm-app"
   computer_name         = "tmplvm"
@@ -70,25 +72,16 @@ resource "azurerm_windows_virtual_machine" "template_vm" {
   tags        = var.tags
 }
 
-resource "azurerm_resource_group" "images" {
-  name     = "rg-vm-images"
-  location = "westeurope"
-}
-
-# ✅ Create Image from Template VM
+# ✅ Create Image from Template VM (only once)
 resource "azurerm_image" "custom_image" {
   name                      = "custom-win-image"
-  location                  = azurerm_resource_group.rg.location
+  location                  = azurerm_resource_group.images.location
   resource_group_name       = azurerm_resource_group.images.name
-
   source_virtual_machine_id = azurerm_windows_virtual_machine.template_vm.id
-
-  depends_on = [
-    azurerm_windows_virtual_machine.template_vm
-  ]
+  depends_on                = [azurerm_windows_virtual_machine.template_vm]
 }
 
-# ✅ Public IPs for each VM
+# ✅ Public IPs for each Clone
 resource "azurerm_public_ip" "public_ip" {
   count               = var.number_of_vms
   name                = "pip-vm-app-${count.index}"
@@ -98,7 +91,7 @@ resource "azurerm_public_ip" "public_ip" {
   tags                = var.tags
 }
 
-# ✅ NICs for cloned VMs
+# ✅ NICs for Cloned VMs
 resource "azurerm_network_interface" "nic" {
   count               = var.number_of_vms
   name                = "nic-vm-app-${count.index}"
@@ -115,7 +108,7 @@ resource "azurerm_network_interface" "nic" {
   tags = var.tags
 }
 
-# ✅ Cloned VMs from Custom Image
+# ✅ Final Cloned VMs from Image (only new will be added if increased)
 resource "azurerm_windows_virtual_machine" "vm" {
   count                  = var.number_of_vms
   name                   = "vm-app-${count.index}"
