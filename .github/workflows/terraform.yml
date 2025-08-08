@@ -7,46 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  create-template-vm:
-    name: 🚀 Create Template VM Only
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./terraform
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.8.4
-
-      - name: Azure CLI login
-        uses: azure/login@v1
-        with:
-          creds: >
-            {
-              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
-              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
-              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
-              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
-            }
-
-      - name: Terraform Init
-        env:
-          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
-        run: terraform init
-
-      - name: Apply template_vm only
-        env:
-          ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
-        run: terraform apply -auto-approve -target=azurerm_windows_virtual_machine.template_vm -var-file="terraform.tfvars"
-
+  # ✅ 1. Verifică dacă imaginea există
   check-image:
     name: 🔍 Check if Image Exists
     runs-on: ubuntu-latest
@@ -70,15 +32,15 @@ jobs:
           IMAGE_ID=$(az image show --resource-group rg-vm-images --name custom-win-image --query id --output tsv || echo "")
           echo "image_id=$IMAGE_ID" >> $GITHUB_OUTPUT
 
-  import-image-if-exists:
-    name: 📦 Import Image in State (if exists)
+
+  # ✅ 2. Creează imaginea dacă nu există deja
+  create-image:
+    name: 🖼️ Create Custom Image from Template
     runs-on: ubuntu-latest
     needs: check-image
-    defaults:
-      run:
-        working-directory: terraform
+    if: needs.check-image.outputs.image_id == ''
     steps:
-      - uses: actions/checkout@v4  
+      - uses: actions/checkout@v4
 
       - name: Azure CLI login
         uses: azure/login@v1
@@ -91,20 +53,58 @@ jobs:
               "tenantId": "${{ secrets.ARM_TENANT_ID }}"
             }
 
-      - name: Import image into state if exists
+      - name: Stop and Generalize VM Template
         run: |
+          az vm deallocate --resource-group rg-vm-apps --name vm-template
+          az vm generalize --resource-group rg-vm-apps --name vm-template
+
+      - name: Create Custom Image
+        run: |
+          az image create \
+            --resource-group rg-vm-images \
+            --name custom-win-image \
+            --source vm-template \
+            --os-type Windows
+
+
+  # ✅ 3. Dacă există, importă imaginea în Terraform
+  import-image-if-exists:
+    name: 📦 Import Image in State
+    runs-on: ubuntu-latest
+    needs: [check-image, create-image]
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure CLI login
+        uses: azure/login@v1
+        with:
+          creds: >
+            {
+              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+            }
+
+      - name: Terraform Init & Import Image
+        run: |
+          terraform init
           IMG_ID=$(az image show --resource-group rg-vm-images --name custom-win-image --query id -o tsv || echo "")
           if [ "$IMG_ID" != "" ]; then
-            terraform init
             terraform import azurerm_image.custom_image "$IMG_ID"
           else
-            echo "Image does not exist. Terraform will create it."
-          fi
+            echo "Image does not exist, skipping import."
+          }
 
+
+  # ✅ 4. Aplică infrastructura Terraform (creează VM-uri finale)
   apply-final:
-    name: 🚀 Apply Final Infra (VMs)
+    name: 🚀 Apply Final Infra
     runs-on: ubuntu-latest
-    needs: [check-image, import-image-if-exists]
+    needs: [check-image, create-image, import-image-if-exists]
     defaults:
       run:
         working-directory: terraform
