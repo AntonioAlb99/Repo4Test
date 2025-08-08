@@ -135,6 +135,17 @@ jobs:
         working-directory: ./terraform
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Azure CLI login
+        uses: azure/login@v1
+        with:
+          creds: >
+            {
+              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+            }
 
       - name: Import RG if exists
         run: |
