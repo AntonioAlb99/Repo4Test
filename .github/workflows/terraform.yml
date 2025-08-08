@@ -54,10 +54,15 @@ jobs:
           ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
         run: terraform init
 
-      - name: Ensure Resource Group Exists
+      - name: Import RG if exists
         run: |
-          az group show --name rg-vm-apps --output none || \
-          az group create --name rg-vm-apps --location westeurope
+          RG_NAME="rg-vm-apps"
+          RG_ID=$(az group show --name $RG_NAME --query id -o tsv || echo "")
+          if [ ! -z "$RG_ID" ]; then
+            if ! terraform state list | grep -q "azurerm_resource_group.rg"; then
+              terraform import azurerm_resource_group.rg $RG_ID
+            fi
+          fi
 
       - name: Apply only template_vm
         env:
