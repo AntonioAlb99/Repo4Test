@@ -54,6 +54,16 @@ jobs:
           ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
         run: terraform init
 
+      - name: Import RG if exists
+        run: |
+          RG_NAME="rg-vm-apps"
+          RG_ID=$(az group show --name $RG_NAME --query id -o tsv || echo "")
+          if [ ! -z "$RG_ID" ]; then
+            if ! terraform state list | grep -q "azurerm_resource_group.rg"; then
+              terraform import azurerm_resource_group.rg $RG_ID
+            fi
+          fi
+
       - name: Apply only template_vm
         env:
           ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
@@ -69,7 +79,7 @@ jobs:
     if: needs.check-image.outputs.image_id == ''
     defaults:
       run:
-        working-directory: ./terraform   # ✅ AICI!
+        working-directory: ./terraform
     steps:
       - name: Azure CLI login
         uses: azure/login@v1
@@ -107,10 +117,10 @@ jobs:
         run: |
           IMG_ID=$(az image show --resource-group rg-vm-images --name custom-win-image --query id -o tsv || echo "")
           if [ "$IMG_ID" != "" ]; then
-            echo " Image exists, importing into state..."
+            terraform init
             terraform import azurerm_image.custom_image "$IMG_ID"
           else
-            echo " Image does not exist. Terraform will create it."
+            echo "Image does not exist. Terraform will create it."
           fi
         working-directory: terraform
 
